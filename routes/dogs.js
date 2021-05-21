@@ -1,0 +1,253 @@
+/**
+ * A module to send CRUD operations on data stored on dogs
+ * @module routes/dogs
+ * @author Preeth Selvamohan
+ * @see schemas/dog for JSON Schema definition file
+ */
+
+const Router = require('koa-router');
+const bodyParser = require('koa-bodyparser');
+
+const auth = require('../controllers/auth');
+const can = require('../permissions/dogs');
+
+const dogs = require('../models/dogs');
+
+const {validateDog, validateDogUpdate} = require('../controllers/validation');
+
+const Twitter = require("twitter")
+const dotenv = require("dotenv")
+dotenv.config()
+
+/**
+ * Gets relevant authentication keys stored in .env file
+ * Used to authenticate for twitter API to send tweets
+ * @params {string} Stores Authentication key
+ */
+const client = new Twitter({
+  consumer_key: process.env.CONSUMER_KEY,
+  consumer_secret: process.env.CONSUMER_SECRET,
+  access_token_key: process.env.ACCESS_TOKEN_KEY,
+  access_token_secret: process.env.ACCESS_TOKEN_SECRET
+})
+
+const prefix = '/api/v1/dogs';
+const router = Router({prefix: prefix});
+
+// Dog information routes
+router.get('/', getAll);
+router.post('/', auth, bodyParser(), validateDog, createDogEntry);
+router.get('/:id([0-9]{1,})', getById);
+router.put('/:id([0-9]{1,})', auth, bodyParser(), validateDogUpdate, updateDogEntry);
+router.del('/:id([0-9]{1,})', auth, deleteDogEntry);
+router.get('/name', bodyParser(), getByName);
+router.get('/breed', bodyParser(), getByBreed);
+
+router.post('/test', bodyParser(), validateDog, testCreateDogEntry);
+router.put('/test/:id([0-9]{1,})', bodyParser(), validateDogUpdate, testUpdateDogEntry);
+router.del('/test/:id([0-9]{1,})', testDeleteDogEntry);
+
+/**
+ * Asynchronous function to get all dog entries
+ * @params {int} Sets parameters to order output
+ * @params {string} Sets parameters to order output
+ * @returns {object} mysqljs results objects containing indexable rows 
+ */
+async function getAll(ctx) {
+  const {page=1, limit=100, order="dateCreated", direction='ASC'} = ctx.request.query;
+  const result = await dogs.getAll(page, limit, order, direction);
+  if (result.length) {
+    const body = result.map(post => {
+      // extract the post fields we want to send back (summary details)
+      const {ID, name, breed, dateCreated, imageURL} = post;
+      // add links to the post summaries for HATEOAS compliance
+      // clients can follow these to find related resources
+      return {ID, name, breed, dateCreated, imageURL};
+    });
+    ctx.body = body;
+    ctx.status = 200;
+  }
+}
+
+/**
+ *Aynchronous function to get a dog entry by its id
+ *@params{int} Dog entry unique id
+ *@returns{object[]} mysqljs results object containing indexable rows 
+ */
+async function getById(ctx) {
+  const id = ctx.params.id;
+  const result = await dogs.getById(id);
+  if (result.length) {
+    const dog = result[0];
+    ctx.body = dog;
+    ctx.status = 200;
+  }
+}
+
+/**
+ *Aynchronous function to get a dog entry by its name
+ *@params{string} Dog entry field "name"
+ *@returns{object} mysqljs results object(s) containing indexable rows 
+ */
+async function getByName(ctx) {
+  const name = ctx.request.body;
+  const result = await dogs.getByName(name);
+  const dog = result;
+  ctx.body = dog;
+  ctx.status = 200;
+}
+
+/**
+ *Aynchronous function to get a dog entry by its breed
+ *@params{string} Dog entry field "breed"
+ *@returns{object} mysqljs results object(s) containing indexable rows 
+ */
+async function getByBreed(ctx) {
+  const breed = ctx.request.body;
+  const result = await dogs.getByBreed(breed);
+  const dog = result;
+  ctx.body = dog;
+  ctx.status = 200;
+}
+
+/**
+ *Aynchronous function to create a new dog entry
+ *@params{object} Object containing a name, breed and imageURL(optional) input
+ *@returns{object} mysqljs results object(s) containing id, boolean and link to resource
+ */
+async function createDogEntry(ctx) {
+  const body = ctx.request.body;
+  const result = await dogs.add(body);
+  if (result.affectedRows) {
+    const permission = can.add(ctx.state.user, dogs);
+    if (!permission.granted) {
+      ctx.status = 403;
+    } else {
+      const id = result.insertId;
+      ctx.status = 201;
+      ctx.body = {ID: id, created: true, link: `${ctx.request.path}/${id}`};
+      client.post("statuses/update", { status: "A new dog has been added" }, function(error, tweet, response) {
+        if (error) {
+          console.log(error)
+        } else {
+          console.log(tweet)
+        }
+      })
+    }
+  }
+}
+
+/**
+ *Aynchronous function to update a dog entry
+ *@params{object} Object containing a name(optional), breed(optional) and imageURL(optional) input
+ *@returns{object} mysqljs results object(s) containing id, boolean and link to resource
+ */
+async function updateDogEntry(ctx) {
+  const id = ctx.params.id;
+  let result = await dogs.getById(id);  // check it exists
+  if (result.length) {
+    let dog = result[0];
+    const permission = can.update(ctx.state.user, dog);
+    if (!permission.granted) {
+      ctx.status = 403;
+    } else {
+      // exclude fields that should not be updated
+      const {ID, dateCreated, ...body} = ctx.request.body;
+      // overwrite updatable fields with remaining body data
+      Object.assign(dog, body);
+      result = await dogs.update(dog);
+      if (result.affectedRows) {
+        ctx.body = {ID: id, updated: true, link: ctx.request.path};
+        ctx.status = 200;
+      }
+    }
+  }
+}
+
+/**
+ *Aynchronous function to delete a dog entry
+ *@params{int} Dog entry unique id
+ *@returns{object} mysqljs results object(s) containing id and boolean
+ */
+async function deleteDogEntry(ctx) {
+  const permission = can.delete(ctx.state.user);
+  if (!permission.granted) {
+    ctx.status = 403;
+  } else {
+    const id = ctx.params.id;
+    const result = await dogs.delById(id);
+    if (result.affectedRows) {
+      ctx.body = {ID: id, deleted: true}
+      ctx.status = 200;
+    }
+  }
+}
+
+/**
+ * Calls twitter API, authenticates and posts tweet
+ */
+client.post("statuses/update", { status: "A new dog listing has just been added" }, function(error, tweet, response) {
+  if (error) {
+    console.log(error)
+  } else {
+    console.log(tweet)
+  }
+})
+
+/**
+ *Aynchronous function to create a new dog entry
+ *Removed authentication for testing
+ *Function only called in testing, never used in web API
+ *@params{object} Object containing a name, breed and imageURL(optional) input
+ */
+async function testCreateDogEntry(ctx) {
+  const body = ctx.request.body;
+  const result = await dogs.add(body);
+  if (result.affectedRows) {
+    const id = result.insertId;
+      ctx.status = 201;
+      ctx.body = {ID: id, created: true, link: `${ctx.request.path}/${id}`};
+  }
+}
+
+
+/**
+ *Aynchronous function to update a dog entry
+ *Removed authentication for testing
+ *Function only called in testing, never used in web API
+ *@params{object} Object containing a name(optional), breed(optional) and imageURL(optional) input
+ *@returns{object} mysqljs results object(s) containing id, boolean and link to resource
+ */
+async function testUpdateDogEntry(ctx) {
+  const id = ctx.params.id;
+  let result = await dogs.getById(id);  // check it exists
+  if (result.length) {
+    let dog = result[0];
+    const {ID, dateCreated, ...body} = ctx.request.body;
+      // overwrite updatable fields with remaining body data
+      Object.assign(dog, body);
+      result = await dogs.update(dog);
+      if (result.affectedRows) {
+        ctx.body = {ID: id, updated: true, link: ctx.request.path};
+        ctx.status = 200;
+      }
+  }
+}
+
+/**
+ *Aynchronous function to delete a dog entry
+ *Removed authentication for testing
+ *Function only called in testing, never used in web API
+ *@params{int} Dog entry unique id
+ *@returns{object} mysqljs results object(s) containing id and boolean
+ */
+async function testDeleteDogEntry(ctx) {
+  const id = ctx.params.id;
+    const result = await dogs.delById(id);
+    if (result.affectedRows) {
+      ctx.body = {ID: id, deleted: true}
+      ctx.status = 200;
+    }
+}
+
+module.exports = router;
