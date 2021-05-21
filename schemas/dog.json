@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    
+    "dog": {
+      "id": "/dog",
+      "title": "Dog",
+      "description": "An entry for a dog",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name given to dog",
+          "type": "string"
+        },
+        "breed": {
+          "description": "The breed of the given dog",
+          "type": "string"
+        },
+        "imageURL": {
+          "description": "URL for image of dog to be uploaded",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": ["name", "breed"],
+      "additionalProperties": false      
+    },
+    
+    "dogUpdate": {
+      "$id": "#dogUpdate",
+      "title": "Dog Update",
+      "description": "Data a user can update (excludes username).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Name given to dog",
+          "type": "string"
+        },
+        "breed": {
+          "description": "The breed of the given dog",
+          "type": "string"
+        },
+        "imageURL": {
+          "description": "URL for image of dog to be uploaded",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
+    }
+    
+  }
+}

@@ -1,0 +1,8 @@
+CREATE TABLE dogs (
+      ID INT NOT NULL AUTO_INCREMENT,  
+      name TEXT NOT NULL,
+      breed TEXT,
+      dateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      imageURL VARCHAR(2048),  
+      PRIMARY KEY (ID),
+);

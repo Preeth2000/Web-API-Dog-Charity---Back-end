@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    
+    "messages": {
+      "id": "/messages",
+      "title": "Messages",
+      "description": "A message entry",
+      "type": "object",
+      "properties": {
+        "userID": {
+          "description": "Message creator's ID",
+          "type": "int"
+        },
+        "username": {
+          "description": "Message creator's username",
+          "type": "string"
+        },
+        "title": {
+          "description": "Message Title",
+          "type": "string"
+        },
+        "paragraph": {
+          "description": "Content of message",
+          "type": "string"
+        },
+        "response": {
+          "description": "Response to message",
+          "type": "string"
+        }
+      },
+      "required": ["userID","username","title", "paragraph"],
+      "additionalProperties": false      
+    },
+    
+    "messageUpdate": {
+      "$id": "/messageUpdate",
+      "title": "Message Update",
+      "description": "Data a user can update.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "description": "Message Title",
+          "type": "string"
+        },
+        "paragraph": {
+          "description": "Content of message",
+          "type": "string"
+        },
+        "response": {
+          "description": "Message response",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+    
+  }
+}
